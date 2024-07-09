@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grey-Scott Reaction-Diffusion</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; }
+        canvas { width: 100%; height: 100%; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
+
+        let a = [];
+        let b = [];
+        let nextA = [];
+        let nextB = [];
+        
+        const dA = 1.0;
+        const dB = 0.5;
+        const feed = 0.037; // Adjusted
+        const kill = 0.06; // Adjusted
+
+        let drawing = false;
+
+        function init() {
+            for (let x = 0; x < width; x++) {
+                a[x] = [];
+                b[x] = [];
+                nextA[x] = [];
+                nextB[x] = [];
+                for (let y = 0; y < height; y++) {
+                    a[x][y] = 1 + 0.1 * (Math.random() - 0.5); // Add random noise to `a`
+                    b[x][y] = 0 + 0.1 * (Math.random() - 0.5); // Add random noise to `b`
+                    nextA[x][y] = a[x][y];
+                    nextB[x][y] = b[x][y];
+                }
+            }
+        }
+
+        function laplaceA(x, y) {
+            let sumA = 0;
+            sumA += a[x][y] * -1;
+            sumA += a[x-1][y] * 0.2;
+            sumA += a[x+1][y] * 0.2;
+            sumA += a[x][y-1] * 0.2;
+            sumA += a[x][y+1] * 0.2;
+            sumA += a[x-1][y-1] * 0.05;
+            sumA += a[x+1][y-1] * 0.05;
+            sumA += a[x+1][y+1] * 0.05;
+            sumA += a[x-1][y+1] * 0.05;
+            return sumA;
+        }
+
+        function laplaceB(x, y) {
+            let sumB = 0;
+            sumB += b[x][y] * -1;
+            sumB += b[x-1][y] * 0.2;
+            sumB += b[x+1][y] * 0.2;
+            sumB += b[x][y-1] * 0.2;
+            sumB += b[x][y+1] * 0.2;
+            sumB += b[x-1][y-1] * 0.05;
+            sumB += b[x+1][y-1] * 0.05;
+            sumB += b[x+1][y+1] * 0.05;
+            sumB += b[x-1][y+1] * 0.05;
+            return sumB;
+        }
+
+        function update() {
+            for (let x = 1; x < width-1; x++) {
+                for (let y = 1; y < height-1; y++) {
+                    let aVal = a[x][y];
+                    let bVal = b[x][y];
+                    nextA[x][y] = aVal + (dA * laplaceA(x, y) - aVal * bVal * bVal + feed * (1 - aVal));
+                    nextB[x][y] = bVal + (dB * laplaceB(x, y) + aVal * bVal * bVal - (kill + feed) * bVal);
+                    nextA[x][y] += 0.01 * (Math.random() - 0.5); // Add random perturbation to `a`
+                    nextB[x][y] += 0.01 * (Math.random() - 0.5); // Add random perturbation to `b`
+                }
+            }
+
+            for (let x = 1; x < width-1; x++) {
+                for (let y = 1; y < height-1; y++) {
+                    a[x][y] = nextA[x][y];
+                    b[x][y] = nextB[x][y];
+                }
+            }
+        }
+
+        function draw() {
+            let imageData = ctx.getImageData(0, 0, width, height);
+            let data = imageData.data;
+
+            for (let x = 0; x < width; x++) {
+                for (let y = 0; y < height; y++) {
+                    let idx = (x + y * width) * 4;
+                    let c = Math.floor((a[x][y] - b[x][y]) * 255);
+                    c = Math.max(Math.min(c, 255), 0);
+                    if (c > 220) {
+                        // Yellow (thick lines)
+                        data[idx] = 255;
+                        data[idx + 1] = 255;
+                        data[idx + 2] = 0;
+                    } else if (c > 150) {
+                        // Orange (border)
+                        data[idx] = 255;
+                        data[idx + 1] = 140;
+                        data[idx + 2] = 0;
+                    } else if (c > 80) {
+                        // Green (border)
+                        data[idx] = 0;
+                        data[idx + 1] = 180;
+                        data[idx + 2] = 0;
+                    } else {
+                        // Black background
+                        data[idx] = data[idx + 1] = data[idx + 2] = 0;
+                    }
+                    data[idx + 3] = 255; // Alpha
+                }
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function animate() {
+            for (let i = 0; i < 9; i++) { // Speed up x9
+                update();
+            }
+            draw();
+            requestAnimationFrame(animate);
+        }
+
+        canvas.addEventListener('mousedown', function(event) {
+            drawing = true;
+        });
+
+        canvas.addEventListener('mouseup', function(event) {
+            drawing = false;
+        });
+
+        canvas.addEventListener('mousemove', function(event) {
+            if (drawing) {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = width / rect.width;
+                const scaleY = height / rect.height;
+                const x = Math.floor((event.clientX - rect.left) * scaleX);
+                const y = Math.floor((event.clientY - rect.top) * scaleY);
+
+                for (let i = -5; i <= 5; i++) { // Increased initial reaction spot size
+                    for (let j = -5; j <= 5; j++) {
+                        if (x + i >= 0 && x + i < width && y + j >= 0 && y + j < height) {
+                            a[x + i][y + j] = 0.5 + 0.1 * (Math.random() - 0.5); // Add random noise to `a`
+                            b[x + i][y + j] = 0.25 + 0.1 * (Math.random() - 0.5); // Add random noise to `b`
+                        }
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('resize', function() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            init();
+        });
+
+        init();
+        animate();
+    </script>
+</body>
+</html>
